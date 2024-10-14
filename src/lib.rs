@@ -182,12 +182,26 @@ impl fmt::Display for Attributes {
 }
 
 pub trait Skip {
-    fn skip_null_bytes(&mut self) -> io::Result<bool>;
-    fn skip_null_bytes_from_end(&mut self) -> io::Result<()>;
+    fn find_first_record(&mut self) -> io::Result<bool>;
+    fn find_next_record(&mut self) -> io::Result<bool>;
 }
 
 impl<T: Read + io::Seek> Skip for T {
-    fn skip_null_bytes(&mut self) -> io::Result<bool> {
+    fn find_first_record(&mut self) -> io::Result<bool> {
+        let mut buf = vec![0_u8; 65535];
+        loop {
+            let n = self.read(&mut buf)?;
+            let idx = buf[0..n].iter().position(|x| *x != 0);
+
+            if let Some(x) = idx {
+                let off = (n as i64) - (x as i64);
+                self.seek(io::SeekFrom::Current(-off))?;
+                return Ok(true);
+            }
+        }
+    }
+
+    fn find_next_record(&mut self) -> io::Result<bool> {
         let mut buf: [u8; 4] = [0; 4];
         loop {
             let n = self.read(&mut buf)?;
@@ -197,48 +211,6 @@ impl<T: Read + io::Seek> Skip for T {
                 self.seek(io::SeekFrom::Current(-4))?;
                 return Ok(true);
             }
-        }
-    }
-
-    fn skip_null_bytes_from_end(&mut self) -> io::Result<()> {
-        let buf_size: i64 = 65535;
-        let mut buf = vec![0_u8; buf_size as usize];
-        self.seek(io::SeekFrom::End(-buf_size))?;
-
-        let mut consecutive_zeros = 0;
-        let lots_of_zeros = buf_size;
-
-        // we read a full buffer backwards until the whole buffer
-        // is filled with zeroes => that's our cue to stop
-        loop {
-            let n = self.read(&mut buf)?;
-            if n == 0 {
-                return Ok(());
-            }
-            buf[..n].reverse();
-            for b in buf[..n].iter() {
-                match b {
-                    0 => consecutive_zeros += 1,
-                    _ => consecutive_zeros = 0,
-                }
-
-                if consecutive_zeros >= lots_of_zeros {
-                    self.skip_null_bytes()?;
-                    return Ok(());
-                }
-            }
-
-            self.seek(io::SeekFrom::Current(-(n as i64)))?;
-            let cur_offset = self.seek(io::SeekFrom::Current(0))? as i64;
-
-            if cur_offset < buf_size {
-                // Special case: we're at the beginning of the file
-                self.seek(io::SeekFrom::Start(0))?;
-                self.skip_null_bytes()?;
-                return Ok(());
-            }
-
-            self.seek(io::SeekFrom::Current(-buf_size))?;
         }
     }
 }
@@ -260,10 +232,10 @@ where
     pub fn new(mft: Option<MftParser<T>>, mut usn: U, offset: Option<u64>) -> Result<Self, Error> {
         if let Some(off) = offset {
             usn.seek(io::SeekFrom::Start(off))?;
-            usn.skip_null_bytes()?;
-        } else {
-            usn.skip_null_bytes_from_end()?;
         }
+
+        usn.find_first_record()?;
+        println!("Found first record at offset {}", usn.stream_position()?);
 
         Ok(Self { mft, usn })
     }
@@ -298,11 +270,12 @@ where
 {
     type Item = (String, Entry);
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.usn.skip_null_bytes().ok()? {
+        if !self.usn.find_next_record().ok()? {
+            println!("no more records");
             return None;
         }
 
-        let entry = Entry::new(&mut self.usn).ok()?;
+        let entry = Entry::new(&mut self.usn).unwrap_or_else(|err| panic!("error building entry: {:?}", err));
         let mut filename = entry.filename();
 
         if let Some(mft) = &mut self.mft {
