@@ -235,7 +235,6 @@ where
         }
 
         usn.find_first_record()?;
-        println!("Found first record at offset {}", usn.stream_position()?);
 
         Ok(Self { mft, usn })
     }
