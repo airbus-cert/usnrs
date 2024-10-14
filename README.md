@@ -57,9 +57,7 @@ Path reconstruction is based on the MFT entry number stored in the USN record. S
 
 ### Specifying the start offset manually
 
-In order to deal with full sparse files more quickly, `usnrs-cli` starts scanning for the beginning of the list of records from the end of the given file. While this seemed pretty robust during our tests, this may give out false start offsets, resulting in wrongly parsed entries.
-
-If you observe this behavior, you can specify the start offset of the first record using the `--start` argument. This offset can be found by looking at the file in a hex editor and manually searching for the first record.
+Because USN Journal files usually start with a bunch of null bytes, it can take some time before `usnrs-cli` starts outputting results. You can manually specify the offset at which your first USN entry starts with `--start`.
 
 ```
 $ usnrs-cli --start OFFSET PATH-TO-USNJRNL-J
