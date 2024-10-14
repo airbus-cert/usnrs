@@ -271,7 +271,6 @@ where
     type Item = (String, Entry);
     fn next(&mut self) -> Option<Self::Item> {
         if !self.usn.find_next_record().ok()? {
-            println!("no more records");
             return None;
         }
 
