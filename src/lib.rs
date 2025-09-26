@@ -4,7 +4,7 @@ extern crate mft;
 use binrw::io::Read;
 use binrw::{binrw, BinRead};
 use bitflags::bitflags;
-use chrono::NaiveDateTime;
+use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 
 use mft::MftParser;
 use std::fmt;
@@ -138,10 +138,18 @@ impl Entry {
         (self.timestamp as i64) / 10000000 - 11644473600
     }
 
-    pub fn time(&self) -> NaiveDateTime {
-        let unix = self.unix_timestamp();
-        NaiveDateTime::from_timestamp_opt(unix, 0)
-            .unwrap_or_else(|| panic!("timestamp: could not parse {}", unix))
+    pub fn time(&self) -> DateTime<Utc> {
+        let windows_epoch = Utc.with_ymd_and_hms(1601, 1, 1, 0, 0, 0).unwrap();
+
+        let delta = TimeDelta::new(
+            (self.timestamp / 10_000_000) as i64,
+            (self.timestamp % 10_000_000 * 100) as u32,
+        )
+        .unwrap_or_else(|| {
+            panic!("timestamp: could not parse {}", self.timestamp);
+        });
+
+        windows_epoch + delta
     }
 
     pub fn mft_entry_num(&self) -> u64 {
@@ -273,7 +281,8 @@ where
             return None;
         }
 
-        let entry = Entry::new(&mut self.usn).unwrap_or_else(|err| panic!("error building entry: {:?}", err));
+        let entry = Entry::new(&mut self.usn)
+            .unwrap_or_else(|err| panic!("error building entry: {:?}", err));
         let mut filename = entry.filename();
 
         if let Some(mft) = &mut self.mft {

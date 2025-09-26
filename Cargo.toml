@@ -27,6 +27,6 @@ usnrs-cli = ["clap"]
 [dependencies]
 binrw = "0.12.0"
 bitflags = "2.4.0"
-chrono = "0.4.31"
+chrono = "0.4.42"
 clap = { version = "4.4.6", features = ["derive"], optional = true}
 mft = "0.6.1"
